@@ -9,7 +9,7 @@ contract OrderBasedSwap {
         address tokenToDeposit;
         uint256 amount;
         address tokenDesired;
-        uint256 price;
+        uint256 maxPrice;
         bool active;
     }
 
@@ -19,18 +19,27 @@ contract OrderBasedSwap {
     event DepositFulfilled(address indexed depositor, address indexed buyer, address tokenToDeposit, uint256 amount, address tokenDesired, uint256 totalPrice);
     event DepositCancelled(address indexed depositor, uint256 index);
 
-    
-    function depositTokens(address _tokenToDeposit, uint256 _amount, address _tokenDesired, uint256 _price) public {
-        // Transfer tokens from the depositor to this contract
-        // (Assuming the token follows ERC20 standards)
-        require(IERC20(_tokenToDeposit).transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+    // CUSTOM ERROR
+    error transferFailed();
+    error insufficientFund();
+
+    function depositTokens(
+        address _tokenToDeposit, 
+        uint256 _amount, 
+        address _tokenDesired, 
+        uint256 _price
+        ) public {
+        if(IERC20(_tokenToDeposit).balanceOf(msg.sender) < _amount) { revert insufficientFund(); }
+
+        bool failed = IERC20(_tokenToDeposit).transferFrom(msg.sender, address(this), _amount); 
+        if(failed) { revert transferFailed(); }
 
         Deposit memory newDeposit = Deposit({
             depositor: msg.sender,
             tokenToDeposit: _tokenToDeposit,
             amount: _amount,
             tokenDesired: _tokenDesired,
-            price: _price,
+            maxPrice: _price,
             active: true
         });
 
@@ -43,7 +52,7 @@ contract OrderBasedSwap {
         Deposit storage deposit = deposits[_depositor][_index];
         require(deposit.active, "Deposit is not active");
         
-        uint256 totalPrice = deposit.price * deposit.amount;
+        uint256 totalPrice = deposit.maxPrice * deposit.amount;
 
         require(IERC20(deposit.tokenDesired).transferFrom(msg.sender, deposit.depositor, totalPrice), "Payment failed");
 
